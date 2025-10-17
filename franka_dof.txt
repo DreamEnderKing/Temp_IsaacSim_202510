@@ -1,0 +1,11 @@
+DOF Name       |Type        |Limits|Lower    |Upper    |Drive Mode |Max Vel    |Max Effort |Stiffness  |Damping    
+------------------------------------------------------------------------------------------------------------------------
+panda_joint1   |unknown     |Yes   |-2.897   |2.897    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint2   |unknown     |Yes   |-1.763   |1.763    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint3   |unknown     |Yes   |-2.897   |2.897    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint4   |unknown     |Yes   |-3.072   |-0.070   |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint5   |unknown     |Yes   |-2.897   |2.897    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint6   |unknown     |Yes   |-0.018   |3.753    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_joint7   |unknown     |Yes   |-2.897   |2.897    |force      |10.000    |100000.000|572957824.000|5729578.000
+panda_finger_joint1|unknown     |Yes   |0.000    |0.040    |force      |10.000    |7.200     |10000.000 |1000.000  
+panda_finger_joint2|unknown     |Yes   |0.000    |0.040    |unknown    |10.000    |0.000     |0.000     |0.000     
