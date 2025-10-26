@@ -75,6 +75,7 @@ class Task_4(BaseTask):
             "gripper": 0.0,
             "steady": False
         }
+        self.grasp = False
 
         self.__curobo_init__()
 
@@ -84,7 +85,6 @@ class Task_4(BaseTask):
         generator = CudaRobotGeneratorConfig(
             external_asset_path=join_path(curPath, "assets"),
             external_robot_configs_path=join_path(curPath, "assets"),
-            load_link_names_with_mesh=True,
             tensor_args=self.tensor_args, 
             **config
         )
@@ -94,7 +94,9 @@ class Task_4(BaseTask):
         self.usd_helper.load_stage(my_world.stage)
         self.plan_config = MotionGenPlanConfig(
             enable_graph=True,
-            max_attempts=5,
+            enable_graph_attempt=2,
+            enable_finetune_trajopt = True,
+            max_attempts=10,
         )
 
     def print(self, msg):
@@ -151,8 +153,8 @@ class Task_4(BaseTask):
         ob1 = obj.FixedCuboid(
             prim_path="/World/Ob1",
             name="Ob1",
-            translation=np.array([center_x, 0, 0.25]),
-            scale=np.array([0.02, 0.6, 0.10]),
+            translation=np.array([center_x, 0, 0.55]),
+            scale=np.array([0.02, 0.5, 0.20]),
             physics_material=ob_physics,
             visual_material=OmniPBR(prim_path="/World/Looks/Ob1", color=np.array([0.0, 0.0, 1.0]))
         )
@@ -200,34 +202,7 @@ class Task_4(BaseTask):
         self.print("Added franka robot.")
         self.robot_prim = franka
         self.center_distance = prims.SingleXFormPrim(prim_path="/World/Franka/panda_hand/tool_center").get_local_pose()[0][2]
-
-        obstacles = self.usd_helper.get_obstacles_from_stage(
-            only_paths=["/World"],
-            reference_prim_path="/World/Franka",
-            ignore_substring=[
-                "/World/Franka",
-                "/World/Target",
-                "/World/GroundPlane",
-                "/curobo",
-            ],
-        ).get_collision_check_world()
-        print(obstacles.objects)
-        if self.obstacle:
-            motion_gen_config = MotionGenConfig.load_from_robot_config(
-                self.robot_cfg,
-                obstacles,
-                interpolation_dt=1.0/60.0,
-                # collision_checker_type=CollisionCheckerType.MESH
-            )
-        else:
-            motion_gen_config = MotionGenConfig.load_from_robot_config(
-                self.robot_cfg,
-                None,
-                interpolation_dt=1.0/60.0,
-                # collision_checker_type=CollisionCheckerType.MESH
-            )
-        self.robot_solver = MotionGen(motion_gen_config)
-        self.robot_solver.warmup()
+        self.set_up_curobo()
 
         # add visual ball to end effector
         visual_ball_material = OmniGlass(
@@ -244,27 +219,54 @@ class Task_4(BaseTask):
         )
         scene.add(self.visual_ball)
 
+    def set_up_curobo(self):
+        obstacles = self.usd_helper.get_obstacles_from_stage(
+            only_paths=["/World"],
+            reference_prim_path="/World/Franka",
+            ignore_substring=[
+                "/World/Franka",
+                "/World/Target",
+                "/World/GroundPlane",
+                "/curobo",
+            ],
+        ).get_collision_check_world()
+        if self.obstacle:
+            print(obstacles.objects)
+        motion_gen_config = MotionGenConfig.load_from_robot_config(
+            robot_cfg=self.robot_cfg,
+            world_model=obstacles if self.obstacle else None,
+            tensor_args=self.tensor_args,
+            num_trajopt_seeds=12,
+            num_graph_seeds=12,
+            interpolation_dt=1.0/60.0,
+            position_threshold=self.size * self.tolerance / 2,
+            rotation_threshold=np.pi/16,
+            collision_cache={"obb": 30, "mesh": 100},
+            collision_checker_type=CollisionCheckerType.MESH
+        )
+        self.robot_solver = MotionGen(motion_gen_config)
+        self.robot_solver.warmup(warmup_js_trajopt=False)
+
     def get_observations(self):
+        fk_end = self.fk_model.get_state(torch.as_tensor(self.robot_prim.get_joint_positions(), **(self.tensor_args.as_torch_dict())))
         return {
             "target_position": self.target_prim.get_world_pose()[0],
-            "end_position": prims.SingleXFormPrim(prim_path="/World/Franka/panda_hand/tool_center").get_world_pose()[0],
+            "end_position": fk_end.ee_position.tolist(),
             "gripper_hold_position": self.temp_hold["gripper"] if self.temp_hold["steady"] else 0.0
         }
     
     def ik_solve(self, target: np.ndarray):
         loss = np.inf
         result = None
-        start_state = JointState(
-            position=self.tensor_args.to_device(self.robot_prim.get_joint_positions()[:7]),
-            velocity=self.tensor_args.to_device(np.zeros(7)),
-            acceleration=self.tensor_args.to_device(np.zeros(7)),
-            jerk=self.tensor_args.to_device(np.zeros(7)),
-            joint_names=self.robot_prim.dof_names[:7]
+        start_state = JointState.from_numpy(
+            joint_names=self.robot_prim.dof_names, 
+            position=self.robot_prim.get_joint_positions(),
+            tensor_args=self.tensor_args
         )
         start_state = start_state.get_ordered_joint_state(self.robot_solver.kinematics.joint_names)
         start_state = start_state.unsqueeze(0)  # add batch dimension
-        for theta in [np.pi]:
-            _target = target + np.array([-np.sin(theta)*self.center_distance, 0, -np.cos(theta)*self.center_distance])
+        plan = None
+        for theta in np.linspace(0, np.pi*2, 8, endpoint=False):
             goal_pose = Pose(
                 position=self.tensor_args.to_device(target),
                 quaternion=self.tensor_args.to_device(np.array([np.cos(theta/2), 0, np.sin(theta/2), 0]))
@@ -273,17 +275,22 @@ class Task_4(BaseTask):
             if result.success.item():
                 cmd_plan = result.get_interpolated_plan()
                 cmd_plan = self.robot_solver.get_full_js(cmd_plan)
-                for i in range(len(cmd_plan.position)):
-                    cmd = cmd_plan[i]
-                    self.action.put(ArticulationAction(
-                        joint_positions=cmd.position.cpu().numpy(),
-                        joint_velocities=cmd.velocity.cpu().numpy(),
-                        joint_indices=np.array(range(7))
-                    ))
-                return True
+                cmd_last = cmd_plan[-1].position.cpu().numpy()[:7]
+                cmd_loss = np.linalg.norm(cmd_last - self.robot_prim.get_joint_positions()[:7])
+                self.print("IK attempt success at theta = {:.4f} with loss = {:.4f}".format(theta, cmd_loss))
+                if cmd_loss < loss:
+                    loss, plan = cmd_loss, cmd_plan
             else:
                 self.print("IK attempt failed at theta = {:.4f}".format(theta))
-                return False
+        if plan is None:
+            return False
+        for i in range(len(plan.position)):
+            cmd = plan[i]
+            self.action.put(ArticulationAction(
+                joint_positions=np.concatenate((cmd.position.cpu().numpy()[:7], np.array([0.0 if self.grasp else 0.04]*2))),
+                joint_indices=np.array(range(9))
+            ))
+        return True
 
     def sub_move_source(self, index: int, sim_time: float):
         if np.linalg.norm(self.get_observations()["end_position"] - self.source_pos) < self.size * self.tolerance:
@@ -305,6 +312,7 @@ class Task_4(BaseTask):
         if self.temp_hold["steady"]:
             if sim_time - self.temp_hold["start"] > 1.0 / self.slow_rate:
                 self.print("Target held steady.")
+                self.grasp = True
                 self.sub = "move_target"
                 self.first_call = True
         elif self.first_call:
@@ -326,8 +334,9 @@ class Task_4(BaseTask):
                 self.temp_hold["start"] = sim_time
 
     def sub_move_target(self, index: int, sim_time: float):
-        if np.linalg.norm(self.get_observations()["target_position"] - self.target_pos) < self.size * self.tolerance * 100:
+        if np.linalg.norm(self.get_observations()["target_position"] - self.target_pos) < self.size * self.tolerance * 10:
             self.print("Target moved to target position.")
+            self.grasp = False
             self.sub = "loose"
             self.first_call = True
         elif self.first_call and self.action.empty():
@@ -367,7 +376,7 @@ class Task_4(BaseTask):
             np.array([1,0,0,0])
         )
 
-        if index % (self.slow_rate * 50) != 0 and self.obstacle:
+        if index % (self.slow_rate * 50) == 0 and self.obstacle:
             obstacles = self.usd_helper.get_obstacles_from_stage(
                 only_paths=["/World"],
                 reference_prim_path="/World/Franka",
@@ -399,11 +408,11 @@ if __name__ == "__main__":
             world=my_world,
             name="task",
             source_pos=np.array([0.4, 0.0, 0.22]),
-            target_pos=np.array([0.8, 0.0, 0.22]),
+            target_pos=np.array([0.6, 0.0, 0.22]),
             size=0.04,
-            tolerance=0.01,
+            tolerance=0.1,
             slow_rate=slow_rate,
-            obstacle=False,
+            obstacle=True,
             logger=None
         ))
         my_world.reset()

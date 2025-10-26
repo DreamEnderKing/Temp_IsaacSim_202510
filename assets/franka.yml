@@ -16,10 +16,9 @@ robot_cfg:
       panda_finger_joint2: 'Y'
     usd_flip_joint_limits:
       - panda_finger_joint2
-    urdf_path: franka_desc/franka1.urdf
-    asset_root_path: franka
+    urdf_path: franka_desc/franka.urdf
     base_link: panda_link0
-    ee_link: panda_hand
+    ee_link: tool_center
     collision_link_names:
       - panda_link0
       - panda_link1
@@ -34,9 +33,9 @@ robot_cfg:
       - panda_rightfinger
       - tool_center
     collision_spheres: franka_desc/franka_mesh.yml
-    collision_sphere_buffer: 0.001
-    # extra_collision_spheres:
-    #   tool_center: 4
+    collision_sphere_buffer: 0.005
+    extra_collision_spheres:
+      tool_center: 4
     use_global_cumul: true
     self_collision_ignore:
       panda_link0:
@@ -110,7 +109,7 @@ robot_cfg:
       - panda_rightfinger
     lock_joints:
       panda_finger_joint1: 0.04
-      panda_finger_joint2: -0.04
+      panda_finger_joint2: 0.04
     extra_links:
       tool_center:
         parent_link_name: panda_hand
@@ -132,5 +131,3 @@ robot_cfg:
       retract_config: [0.0, -1.3, 0.0, -2.5, 0.0, 1.0, 0., 0.04, -0.04]
       null_space_weight: [1,1,1,1,1,1,1,1,1]
       cspace_distance_weight: [1,1,1,1,1,1,1,1,1]
-      max_acceleration: [15,15,15,15,15,15,15,15,15]
-      max_jerk: [500,500,500,500,500,500,500,500,500]
