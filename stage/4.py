@@ -3,6 +3,7 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": False})  # start the simulation app, with GUI open
 
 from time import time, sleep
+import os
 import sys
 import queue
 
@@ -109,7 +110,7 @@ class Task_4(BaseTask):
     def set_up_scene(self, scene):
         # add ground plane
         add_reference_to_stage(
-            usd_path="assets/ground_plane.usd",
+            usd_path=join_path(curPath, "assets/ground_plane.usd"),
             prim_path="/World/GroundPlane"
         )
         ground_material = PhysicsMaterial(
@@ -186,7 +187,7 @@ class Task_4(BaseTask):
         # add franka
         # from isaacsim.storage.native import get_assets_root_path
         add_reference_to_stage(
-            usd_path="assets/franka.usd", 
+            usd_path=join_path(curPath, "assets/franka.usd"), 
             prim_path="/World/Franka"
         )
         franka = Robot(
@@ -399,7 +400,7 @@ class Task_4(BaseTask):
             self.robot_prim.apply_action(self.action.get())
 
 if __name__ == "__main__":
-    with open('log/log.txt', 'w') as log:
+    with open(join_path(curPath, 'log/log.txt'), 'w') as log:
         # slow down for better visualization
         # err...... maybe slower for better simulation accuracy
         slow_rate = 1
