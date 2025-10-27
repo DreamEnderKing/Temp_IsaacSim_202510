@@ -62,6 +62,7 @@ class Task_4(BaseTask):
         self.obstacle = obstacle
         self.logger = logger
 
+        self.target_looks = None
         self.target_prim = None
         self.robot_prim = None
         self.robot_solver = None
@@ -145,18 +146,18 @@ class Task_4(BaseTask):
         scene.add(desk)
 
         ob_physics = PhysicsMaterial(
-            prim_path="/World/Physics/Ob",
+            prim_path="/World/Physics/Obstacles",
             static_friction=0.0,
             dynamic_friction=0.0,
             restitution=0.0            
         )
         ob1 = obj.FixedCuboid(
-            prim_path="/World/Ob1",
+            prim_path="/World/Obstacles/Ob1",
             name="Ob1",
-            translation=np.array([center_x, 0, 0.55]),
+            translation=np.array([center_x, 0, 0.25]),
             scale=np.array([0.02, 0.5, 0.20]),
             physics_material=ob_physics,
-            visual_material=OmniPBR(prim_path="/World/Looks/Ob1", color=np.array([0.0, 0.0, 1.0]))
+            visual_material=OmniPBR(prim_path="/World/Looks/Obstacles/Ob1", color=np.array([0.0, 0.0, 1.0]))
         )
         scene.add(ob1)
 
@@ -167,13 +168,14 @@ class Task_4(BaseTask):
             dynamic_friction=10.0,
             restitution=0.0
         )
+        self.target_looks = OmniPBR(prim_path="/World/Looks/Target", color=np.array([1.0, 0.0, 0.0]))
         target = obj.DynamicCuboid(
             prim_path="/World/Target",
             name="Target",
             translation=self.source_pos,
             size=self.size,
             physics_material=target_physics,
-            visual_material=OmniPBR(prim_path="/World/Looks/Target", color=np.array([1.0, 0.0, 0.0]))
+            visual_material=self.target_looks
         )
         target.set_collision_approximation('boundingCube')
         prims.RigidPrim(prim_paths_expr='/World/Target', masses=[0.1]).disable_gravities()
@@ -363,11 +365,13 @@ class Task_4(BaseTask):
     def sub_done(self, index: int, sim_time: float):
         if self.first_call:
             self.print("Task completed successfully.")
+            self.target_looks.set_color(np.array([0,1,0]))
             self.first_call = False
 
     def sub_error(self, index: int, sim_time: float):
         if self.first_call:
             self.print("An error occurred.")
+            self.target_looks.set_color(np.array([0,0,0]))
             self.first_call = False
 
     def pre_step(self, index: int, sim_time: float):
