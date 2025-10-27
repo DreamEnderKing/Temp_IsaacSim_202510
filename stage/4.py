@@ -391,14 +391,14 @@ class Task_4(BaseTask):
             self.robot_solver.update_world(obstacles)
 
         getattr(self, "sub_" + self.sub)(index, sim_time)
-        if not self.action.empty() and index % self.slow_rate == 0:
+        if not self.action.empty() and index % (self.slow_rate * 3) == 0:
             self.robot_prim.apply_action(self.action.get())
 
 if __name__ == "__main__":
     with open('log/log.txt', 'w') as log:
         # slow down for better visualization
         # err...... maybe slower for better simulation accuracy
-        slow_rate = 10
+        slow_rate = 1
         my_world = World(
             physics_dt=1.0/60.0/slow_rate,
             rendering_dt=1.0/60.0/slow_rate,
